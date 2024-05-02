@@ -5,80 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage DHCP Static Mappings</title>
     <script>
-        var editingEntry = null;
-
         function submitForm() {
-            var formData = new FormData();
-            formData.append("mapping_name", document.getElementById("mapping_name").value);
-            formData.append("mac_address", document.getElementById("mac_address").value);
-            formData.append("ip_address", document.getElementById("ip_address").value);
-            formData.append("mapping_state", document.getElementById("mapping_state").value);
+            // Fetch the API token
+            fetch("/get_api_token_from_awx", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    // Add any other headers as needed
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                }
+                throw new Error("Network response was not ok.");
+            })
+            .then(token => {
+                // Use the fetched API token for authorization
+                var formData = new FormData();
+                formData.append("mapping_name", document.getElementById("mapping_name").value);
+                formData.append("mac_address", document.getElementById("mac_address").value);
+                formData.append("ip_address", document.getElementById("ip_address").value);
+                formData.append("mapping_state", document.getElementById("mapping_state").value);
 
-            if (editingEntry) {
-                // If editing an entry, replace its contents
-                editingEntry.innerHTML = `<strong>Name:</strong> ${formData.get("mapping_name")} | <strong>MAC:</strong> ${formData.get("mac_address")} | <strong>IP:</strong> ${formData.get("ip_address")} | <strong>Action:</strong> ${formData.get("mapping_state")}`;
-                formData.append("edit", "true"); // Add flag indicating edit action
-                editingEntry = null;
-            } else {
-                // If not editing, display the entry
-                var entriesDiv = document.getElementById("entries");
-                var entry = document.createElement("div");
-                entry.innerHTML = `<strong>Name:</strong> ${formData.get("mapping_name")} | <strong>MAC:</strong> ${formData.get("mac_address")} | <strong>IP:</strong> ${formData.get("ip_address")} | <strong>Action:</strong> ${formData.get("mapping_state")} <button onclick="editEntry(this)">Edit</button>`;
-                entriesDiv.appendChild(entry);
-            }
-
-            // Clear the form
-            document.getElementById("mapping_name").value = "";
-            document.getElementById("mac_address").value = "";
-            document.getElementById("ip_address").value = "";
-            document.getElementById("mapping_state").value = "present";
-
-            alert("DHCP static mapping updated successfully!");
-
-            // Call the function to trigger Ansible playbook
-            callAnsiblePlaybook(formData);
+                fetch("/call_ansible_playbook", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        // Add authorization header with the fetched API token
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        playbook: "configure_pfsense.yml",
+                        vars: {
+                            mapping_name: formData.get("mapping_name"),
+                            mac_address: formData.get("mac_address"),
+                            ip_address: formData.get("ip_address"),
+                            mapping_state: formData.get("mapping_state")
+                        }
+                    })
+                })
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    }
+                    throw new Error("Network response was not ok.");
+                })
+                .then(data => {
+                    // Handle the response from the Ansible playbook if needed
+                    console.log("Ansible playbook executed successfully!");
+                    // Clear the form
+                    document.getElementById("mapping_name").value = "";
+                    document.getElementById("mac_address").value = "";
+                    document.getElementById("ip_address").value = "";
+                    document.getElementById("mapping_state").value = "present";
+                    alert("DHCP static mapping updated successfully!");
+                })
+                .catch(error => {
+                    console.error("Error executing Ansible playbook:", error);
+                });
+            })
+            .catch(error => {
+                console.error("Error fetching API token:", error);
+            });
         }
 
         function editEntry(button) {
-            // Retrieve the entry's details
             var entry = button.parentNode;
             var name = entry.querySelector("strong:nth-of-type(1)").innerText.split(":")[1].trim();
             var mac = entry.querySelector("strong:nth-of-type(2)").innerText.split(":")[1].trim();
             var ip = entry.querySelector("strong:nth-of-type(3)").innerText.split(":")[1].trim();
             var action = entry.querySelector("strong:nth-of-type(4)").innerText.split(":")[1].trim();
 
-            // Set the form values to the entry's details
             document.getElementById("mapping_name").value = name;
             document.getElementById("mac_address").value = mac;
             document.getElementById("ip_address").value = ip;
             document.getElementById("mapping_state").value = action;
 
-            // Set editingEntry to the current entry
-            editingEntry = entry;
-
-            // Remove the entry from the display
             entry.parentNode.removeChild(entry);
-        }
-
-        function callAnsiblePlaybook(formData) {
-            // Use fetch or any other method to call your API and pass the form data
-            // Example:
-            fetch("/call_ansible_playbook", {
-                method: "POST",
-                body: formData
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                }
-                throw new Error("Network response was not ok.");
-            })
-            .then(data => {
-                console.log("Ansible playbook executed successfully!");
-            })
-            .catch(error => {
-                console.error("Error executing Ansible playbook:", error);
-            });
         }
     </script>
 </head>
@@ -106,6 +110,8 @@
 
     <!-- Display entries -->
     <h2>Existing Entries</h2>
-    <div id="entries"></div>
+    <div id="entries">
+        <!-- Entries will be dynamically added here -->
+    </div>
 </body>
 </html>
